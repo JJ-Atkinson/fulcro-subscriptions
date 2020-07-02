@@ -1,0 +1,10 @@
+{
+ :paths ["src/main"]
+
+
+ :deps {com.fulcrologic/guardrails {:mvn/version "0.0.12"}}
+ 
+ 
+ :aliases 
+        {:test {:extra-paths ["src/test"]
+                  :extra-deps  {lambdaisland/kaocha {:mvn/version "1.0.632"}}}}}
