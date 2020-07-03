@@ -2,9 +2,14 @@
  :paths ["src/main"]
 
 
- :deps {com.fulcrologic/guardrails {:mvn/version "0.0.12"}}
- 
- 
- :aliases 
-        {:test {:extra-paths ["src/test"]
-                  :extra-deps  {lambdaisland/kaocha {:mvn/version "1.0.632"}}}}}
+ :deps  {com.fulcrologic/guardrails     {:mvn/version "0.0.12"}
+         dev.freeformsoftware/metacomet {:git/url "https://github.com/JJ-Atkinson/metacomet.git"
+                                         :sha     "2cd5cac2d6460d7c86785a2ff4365236c5f1ac40"}
+         com.stuartsierra/dependency    {:mvn/version "1.0.0"}}
+
+
+ :aliases
+        {:test {:extra-paths ["src/test" "src/dev"]
+                :jvm-opts    ["-Dguardrails.enabled"]
+                :extra-deps  {lambdaisland/kaocha         {:mvn/version "1.0.632"}
+                              org.clojure/tools.namespace {:mvn/version "1.0.0"}}}}}
