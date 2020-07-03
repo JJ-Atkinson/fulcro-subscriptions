@@ -119,7 +119,7 @@
   ([goal-reference]
    [map? => (s/coll-of ::subscription-description)]
    (chain-descriptions @subscription-description-register goal-reference))
-  ([subscription-description-register goal-reference]
+  ([subscription-description-register goal-reference ]
    [map? ::subscription-reference => (s/coll-of ::subscription-description)]
    (let [deps (dep.sorted/full-dependencies-set
                 (::dependency-graph subscription-description-register)
@@ -154,5 +154,6 @@
 (add-default-subs!)
 
 
-(>defn register-subscription)
-
+;(>defn simple-invocation-strategy
+;  "This takes a description chain "
+;  [])
