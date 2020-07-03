@@ -31,7 +31,7 @@
      "
   (:require [com.fulcrologic.guardrails.core :refer [>defn => >def ?]]
             [clojure.spec.alpha :as s]
-            [com.stuartsierra.dependency :as dep]))
+            ))
 
 
 
@@ -105,8 +105,3 @@
 (defn register-subscription-definition [])
 
 
-(comment (->
-           (dep/graph)
-           (dep/depend :b :a)
-           (dep/depend :a :c)
-           (dep/transitive-dependencies :b)))
