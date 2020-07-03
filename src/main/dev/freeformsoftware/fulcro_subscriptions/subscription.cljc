@@ -26,18 +26,20 @@
    (defsc SalesList ...
      (use-sub count-sales-sub)
      ...)
-     ```
+   ```
      
      "
   (:require [com.fulcrologic.guardrails.core :refer [>defn => >def ?]]
             [clojure.spec.alpha :as s]
-            ))
+            [dev.freeformsoftware.fulcro-subscriptions.dependencies.deps-sorted :as dep.sorted]
+            [com.stuartsierra.dependency :as dep]))
 
 
+(>def ::subscription-reference #(or (keyword? %) (symbol? %)))
 
 (>def ::f ifn?)
-(>def ::arguments (s/coll-of keyword?))
-(>def ::returns keyword?)
+(>def ::arguments (s/coll-of ::subscription-reference))
+(>def ::returns ::subscription-reference)
 (>def ::invocation-fn ifn?)
 
 (>def ::subscription-description (s/keys :req [::f ::arguments ::returns]))
@@ -86,22 +88,71 @@
    is an option to switch the function used to apply f to an argument map. Built in options are
    [[linear-apply-f]] and [[map-apply-f]]."
   ([f args ret]
-   [ifn? (s/coll-of keyword?) keyword? => ::subscription-description]
+   [ifn? (s/coll-of ::subscription-reference) ::subscription-reference => ::subscription-description]
    (describe-function f args ret (partial linear-apply-f f args)))
   ([f args ret invocation-fn]
-   [ifn? (s/coll-of keyword?) keyword? ifn? => ::subscription-description]
+   [ifn? (s/coll-of ::subscription-reference) ::subscription-reference ifn? => ::subscription-description]
    {::f             f
     ::arguments     args
     ::returns       ret
     ::invocation-fn invocation-fn}))
 
 
-;; handles 2 things: the dependency graph and the functions
-(defonce subscription-description-register 
-  (atom {::dependency-graph nil
-         ::descriptions {}}))
 
 
-(defn register-subscription-definition [])
+;; handles 2 things: the dependency graph and the function register
+(defonce subscription-description-register
+  (atom nil))
 
+(defn reset-subscription-description-register!
+  "Unlikely to be used outside of tests."
+  []
+  (reset! subscription-description-register {::dependency-graph (dep/graph)
+                                             ::descriptions     {}}))
+(reset-subscription-description-register!)
+
+
+
+(>defn chain-descriptions
+  "This is a stateful operation by default. This will attempt to chain the functions in invocation order
+   based on the current contents of the subscription-description register."
+  ([goal-reference]
+   [map? => (s/coll-of ::subscription-description)]
+   (chain-descriptions @subscription-description-register goal-reference))
+  ([subscription-description-register goal-reference]
+   [map? ::subscription-reference => (s/coll-of ::subscription-description)]
+   (let [deps (dep.sorted/full-dependencies-set
+                (::dependency-graph subscription-description-register)
+                #{goal-reference})
+         desc (::descriptions subscription-description-register)
+         fns (map #(get desc %) deps)]
+     fns)))
+
+
+(>defn register-subscription-description
+  "USAGE NOTE: there is an implicit function pre-registered called ::app-db. It is a no dependency function
+   that jut uses the app db provided by the subscription runner plugin added to fulcro.
+   
+   This returns a delay"
+  ([subscription-description]
+   [::subscription-description => any?]
+   (let [{::keys [arguments returns]} subscription-description
+         {::keys [dependency-graph descriptions]} @subscription-description-register
+         dep-graph (reduce (fn [g arg] (dep/depend g returns arg))
+                     dependency-graph arguments)]
+     (reset! subscription-description-register
+       {::dependency-graph dep-graph
+        ::descriptions     (assoc descriptions
+                             returns subscription-description)}))))
+
+
+(defn add-default-subs!
+  "Unlikely to be used outside of tests."
+  []
+  (register-subscription-description
+    (describe-function identity [] ::app-db identity)))
+(add-default-subs!)
+
+
+(>defn register-subscription)
 
