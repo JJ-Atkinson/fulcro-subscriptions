@@ -28,24 +28,24 @@
                       nil fstr "")))
 
 (reset-subscription-description-register!)
-(add-default-subs!)
+
 
 (register-subscription-description
-  (describe-function + [::dut/app-db] :a))
+  (describe-function str [::dut/app-db] :a))
 (register-subscription-description
-  (describe-function + [:a] :b))
+  (describe-function str [:a] :b))
 (register-subscription-description
-  (describe-function + [:a] :aa))
+  (describe-function str [:a] :aa))
 (register-subscription-description
-  (describe-function + [:a :b ::dut/app-db] :c))
+  (describe-function str [::dut/app-db :a :b] :c))
 (register-subscription-description
-  (describe-function + [:b :aa] :cc))
+  (describe-function str [:aa :b] :cc))
 
-;;        dut/app-db
-;;        /        \
-;;       |   -------a
-;;       |  /      /  \
-;;       | |  ---b     aa
+;;        dut/app-db --------
+;;        /        \         \
+;;       |   -------a        pos?
+;;       |  /      /  \        \
+;;       | |  ---b     aa      
 ;;       \ | /    \     /
 ;;         c         cc
 
@@ -60,3 +60,49 @@
           4))
     (is (= (count (chain-descriptions :cc))
           5))))
+
+
+(deftest test-simple-invocation-strategy
+  (testing "That the results generated are expected"
+    (let [strat (fn [goal prov] (-> (chain-descriptions goal prov) (simple-invocation-strategy)))]
+      (is (= ((strat :a #{::dut/app-db}) {::dut/app-db "appdb"})
+            {:res "appdb" :unchanged? false}))
+      (is (= ((strat :c #{::dut/app-db}) {::dut/app-db "appdb"})
+            ;; appdb    a    b
+            {:res "appdbappdbappdb" :unchanged? false}))
+      (is (= ((strat :c #{::dut/app-db :a}) {::dut/app-db "appdb" :a "A"})
+            ;; appdb    ab
+            {:res "appdbAA" :unchanged? false}))
+      (is (= ((strat :c #{::dut/app-db :a}) {::dut/app-db "appdb"
+                                             :a "A" :b "B"})
+            ;; this works because if you pass addl args that you don't specify beforehand
+            ;; they might get stomped on.
+            ;; appdb    ab
+            {:res "appdbAA" :unchanged? false}))
+      (is (= ((strat :c #{::dut/app-db :a :b}) {::dut/app-db "appdb"
+                                                :a "A" :b "B"})
+            ;; appdb    ab
+            {:res "appdbAB" :unchanged? false})))))
+
+
+(deftest test-short-circuit-invocation-strategy
+  (testing "That the results generated are expected"
+    (let [strat (fn [goal prov] (-> (chain-descriptions goal prov) (short-circuit-invocation-strategy)))]
+      (is (= ((strat :a #{::dut/app-db}) {::dut/app-db "appdb"})
+            {:res "appdb" :unchanged? false}))
+      (is (= ((strat :c #{::dut/app-db}) {::dut/app-db "appdb"})
+            ;; appdb    a    b
+            {:res "appdbappdbappdb" :unchanged? false}))
+      (is (= ((strat :c #{::dut/app-db :a}) {::dut/app-db "appdb" :a "A"})
+            ;; appdb    ab
+            {:res "appdbAA" :unchanged? false}))
+      (is (= ((strat :c #{::dut/app-db :a}) {::dut/app-db "appdb"
+                                             :a "A" :b "B"})
+            ;; this works because if you pass addl args that you don't specify beforehand
+            ;; they might get stomped on.
+            ;; appdb    ab
+            {:res "appdbAA" :unchanged? false}))
+      (is (= ((strat :c #{::dut/app-db :a :b}) {::dut/app-db "appdb"
+                                                :a "A" :b "B"})
+            ;; appdb    ab
+            {:res "appdbAB" :unchanged? false})))))

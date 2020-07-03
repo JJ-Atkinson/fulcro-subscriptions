@@ -71,7 +71,7 @@
       #{:f :g} #{:c} #{[:a :d :g :f]
                        [:a :d :c :f :g]} ; just cuz sets are random ordered. Still works.
       #{:g :f} #{:d} #{[:a :c :g :f]
-                       [:a :d :c :f :g]}
+                       [:a :c :f :g]}
       #{:h :d} #{:f :a} #{[:d :g :h]
                           [:d :h :g]}
       #{:d :h} #{} #{[:a :d :c :f :g :h]

@@ -32,7 +32,8 @@
   (:require [com.fulcrologic.guardrails.core :refer [>defn => >def ?]]
             [clojure.spec.alpha :as s]
             [dev.freeformsoftware.fulcro-subscriptions.dependencies.deps-sorted :as dep.sorted]
-            [com.stuartsierra.dependency :as dep]))
+            [com.stuartsierra.dependency :as dep]
+            [clojure.set :as set]))
 
 
 (>def ::subscription-reference #(or (keyword? %) (symbol? %)))
@@ -42,7 +43,7 @@
 (>def ::returns ::subscription-reference)
 (>def ::invocation-fn ifn?)
 
-(>def ::subscription-description (s/keys :req [::f ::arguments ::returns]))
+(>def ::subscription-description (s/keys :req [::f ::arguments ::returns ::invocation-fn]))
 
 
 
@@ -101,13 +102,13 @@
 
 
 ;; handles 2 things: the dependency graph and the function register
-(defonce subscription-description-register
+(defonce subscription-description-registry
   (atom nil))
 
 (defn reset-subscription-description-register!
   "Unlikely to be used outside of tests."
   []
-  (reset! subscription-description-register {::dependency-graph (dep/graph)
+  (reset! subscription-description-registry {::dependency-graph (dep/graph)
                                              ::descriptions     {}}))
 (reset-subscription-description-register!)
 
@@ -118,12 +119,16 @@
    based on the current contents of the subscription-description register."
   ([goal-reference]
    [map? => (s/coll-of ::subscription-description)]
-   (chain-descriptions @subscription-description-register goal-reference))
-  ([subscription-description-register goal-reference ]
-   [map? ::subscription-reference => (s/coll-of ::subscription-description)]
+   (chain-descriptions goal-reference #{}))
+  ([goal-reference pre-calculated]
+   [::subscription-reference set? => (s/coll-of ::subscription-description)]
+   (chain-descriptions @subscription-description-registry goal-reference pre-calculated))
+  ([subscription-description-register goal-reference pre-calculated]
+   [map? ::subscription-reference set? => (s/coll-of ::subscription-description)]
    (let [deps (dep.sorted/full-dependencies-set
                 (::dependency-graph subscription-description-register)
-                #{goal-reference})
+                #{goal-reference}
+                (set pre-calculated))
          desc (::descriptions subscription-description-register)
          fns (map #(get desc %) deps)]
      fns)))
@@ -137,23 +142,87 @@
   ([subscription-description]
    [::subscription-description => any?]
    (let [{::keys [arguments returns]} subscription-description
-         {::keys [dependency-graph descriptions]} @subscription-description-register
+         {::keys [dependency-graph descriptions]} @subscription-description-registry
          dep-graph (reduce (fn [g arg] (dep/depend g returns arg))
                      dependency-graph arguments)]
-     (reset! subscription-description-register
+     (reset! subscription-description-registry
        {::dependency-graph dep-graph
         ::descriptions     (assoc descriptions
                              returns subscription-description)}))))
 
 
-(defn add-default-subs!
-  "Unlikely to be used outside of tests."
-  []
-  (register-subscription-description
-    (describe-function identity [] ::app-db identity)))
-(add-default-subs!)
 
 
-;(>defn simple-invocation-strategy
-;  "This takes a description chain "
-;  [])
+(>defn simple-invocation-strategy
+  "This takes a description chain and returns 
+   (fn [starting-map] final-result). It won't return the intermediate map, only the result of the last function
+   invocation.
+   
+   
+   ```clojure
+   (def f1 (describe-function str [:a :b] :c))
+   (def f2 (describe-function str [:a :b :c] :d))
+   
+   (defn f-all (simple-invocation-strategy [f1 f2]))
+   
+   (f-all {:a \"a\" :b \"b\"})
+   ; => {:res \"ababc\" :unchanged? false}
+   
+   This will not do anything more than naively apply the functions. If you want diff/no-diff, look at 
+   [[short-circuit-invocation-strategy]] "
+  [chain]
+  [(s/coll-of ::subscription-description) => [map? => any?]]
+  (fn simple-invocation-strategy* [context-map]
+    (loop [[current-sub & rest] chain
+           run-result context-map]
+      (let [new-res (invoke-subscription-definition current-sub run-result)
+            run-result (assoc run-result
+                         (::returns current-sub)
+                         new-res)]
+        (println run-result)
+        (if-not (empty? rest)
+          (recur rest run-result)
+          {:res new-res :unchanged? false})))))
+
+
+(>defn short-circuit-invocation-strategy
+  "This takes a description chain and returns 
+   (fn [starting-map] final-result). It won't return the intermediate map, only the result of the last function
+   invocation.
+   
+   
+   ```clojure
+   (def f1 (describe-function pos? [:a] :pos?))
+   (def f2 (describe-function str [:pos?] :res))
+   
+   (defn f-all (short-circuit-invocation-strategy [f1 f2]))
+   
+   (f-all {:a 1})
+   ; => {:res \"true\" :unchanged? false}
+   (f-all {:a 1})   
+   ; => {:res \"true\" :unchanged? true}
+   (f-all {:a -1}
+   ; => {:res \"false\" :unchanged? false}"
+  [chain]
+  [(s/coll-of ::subscription-description) => [map? => any?]]
+  (let [prior-run-result (atom {})]     ;; todo: swap for volatile. In general this entire impl needs to change 
+    (fn sub-runner* [app-db]
+      (loop [[current-sub & rest] chain
+             run-result (assoc @prior-run-result
+                          :app-db app-db)
+             unchanged-set #{}]
+        (let [args (set (:requires current-sub))
+              old-res (-> current-sub :output run-result)
+              unchanged? (set/subset? args unchanged-set)
+              new-res (if unchanged? old-res ((:f current-sub) run-result))
+              unchanged? (or unchanged? (= new-res old-res))
+              run-result (assoc run-result
+                           (:output current-sub)
+                           new-res)
+              unchanged-set (cond-> unchanged-set
+                              unchanged? (conj (:output current-sub)))]
+          (if-not (empty? rest)
+            (recur rest run-result unchanged-set)
+            (do
+              (reset! prior-run-result run-result)
+              {:res new-res :unchanged? unchanged?})))))))
