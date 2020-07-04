@@ -296,7 +296,7 @@
 ;      (dom/button
 ;        {:onClick (fn [e] (comp/transact! this [(add-sale {:cust-id id})]))}
 ;        "+ Add Sale")
-;      (dom/button
+;      (dom/butto(>defn register-subscription)n
 ;        {:onClick (fn [e] (comp/transact! this [(remove-cust {:cust-id id})]))}
 ;        "- Remove Self")
 ;      (dom/div (str "sum of my sales " sales-total))

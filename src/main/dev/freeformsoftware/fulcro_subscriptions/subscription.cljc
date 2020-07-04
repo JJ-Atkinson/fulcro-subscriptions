@@ -75,6 +75,7 @@
 (>defn apply-description-definition
   "Not the same as `invoke-subscription-definition`. This will take an argument map and apply it as the arguments
    to the subscription definition. Will return the original args with the result of the invocation added to the map."
+  ;; not currently used in any implementation, but could be useful at some point.
   [sub-def args]
   [::subscription-description (? map?) => map?]
   (assoc args
@@ -121,15 +122,15 @@
   ([goal-reference]
    [map? => (s/coll-of ::subscription-description)]
    (chain-descriptions goal-reference #{}))
-  ([goal-reference pre-calculated]
+  ([goal-reference pre-resolved]
    [::subscription-reference set? => (s/coll-of ::subscription-description)]
-   (chain-descriptions @subscription-description-registry goal-reference pre-calculated))
-  ([subscription-description-register goal-reference pre-calculated]
+   (chain-descriptions @subscription-description-registry goal-reference pre-resolved))
+  ([subscription-description-register goal-reference pre-resolved]
    [map? ::subscription-reference set? => (s/coll-of ::subscription-description)]
    (let [deps (dep.sorted/full-dependencies-set
                 (::dependency-graph subscription-description-register)
                 #{goal-reference}
-                (set pre-calculated))
+                (set pre-resolved))
          desc (::descriptions subscription-description-register)
          fns (map #(get desc %) deps)]
      fns)))
@@ -180,7 +181,6 @@
             run-result (assoc run-result
                          (::returns current-sub)
                          new-res)]
-        (println run-result)
         (if-not (empty? rest)
           (recur rest run-result)
           {:res new-res :unchanged? false})))))
@@ -208,7 +208,7 @@
    (f-all {:a -1}
    ; => {:res \"false\" :unchanged? false}"
   [chain]
-  ;                                          ifn used because gspecs were run killing the internal state
+  ; ifn? used because gspecs generative testing was run killing the internal state
   [(s/coll-of ::subscription-description) => ifn?]
   (let [changed?-map (volatile! (transient {}))
         last-result (volatile! (transient {}))]
@@ -229,4 +229,32 @@
             {:res val :unchanged? (not val-changed?)}))))))
 
 
-
+(>defn instance-subscription
+  "Take some subscription name, resolve it to a list of dependencies, wrap it in
+   some invocation strategy. Optionally accepts a `:pre-resolved-set` of keys that 
+   the dependency resolver can skip. Also optionally accepts some `:initial-args-map`.
+   If the `:initial-args-map` is not nil and the `:pre-resolved-set` of keys
+   set is nil, uses the keyset of `:initial-args-map`. Use `{:pre-resolved-set false}`
+   to cancel this. 
+   
+   By default this will use the `short-circuit-invocation-strategy`. The utility of
+   of using this strategy can be nullified when using memoization on some resolvers.
+   Ultimately either changing which nodes have what kind of memoization and implementing
+   custom invocation strategies should make performance tuning easier."
+  ([name]
+   [::subscription-reference => ifn?]
+   (instance-subscription name {}))
+  ([name {:as opts :keys [pre-resolved-set initial-args-map invocation-strategy]
+          :or {invocation-strategy short-circuit-invocation-strategy
+               initial-args-map    {}}}]
+   [::subscription-reference map? => ifn?]
+   (let [pre-resolved-set (if (nil? pre-resolved-set)
+                            (set (keys initial-args-map))
+                            pre-resolved-set)
+         resolved-fns (chain-descriptions name pre-resolved-set)
+         runner (invocation-strategy resolved-fns)]
+     ;; just prevent call chains getting deeper without cause
+     (if (seq initial-args-map)
+       (fn wrap-merge-initial-args* [args]
+         (runner (merge args initial-args-map)))
+       runner))))

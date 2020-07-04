@@ -42,11 +42,11 @@
   (describe-function str [:aa :b] :cc))
 
 (register-subscription-description
-  (describe-function pos? [::dut/app-db] :pos?))
+  (describe-function pos? [:num] :pos?))
 (register-subscription-description
   (describe-function str [:pos?] :pos-str))
 
-;;        dut/app-db --------
+;;        dut/app-db        num
 ;;        /        \         \
 ;;       |   -------a        pos?
 ;;       |  /      /  \        \
@@ -112,9 +112,22 @@
             ;; appdb    ab
             {:res "appdbAB" :unchanged? false})))
     (testing "unchanged? should work."
-      (let [str-a (strat :pos-str #{::dut/app-db})]
-        (is (= (str-a {::dut/app-db 1}) {:res "true" :unchanged? false}))
-        (is (= (str-a {::dut/app-db 1}) {:res "true" :unchanged? true}))
-        (is (= (str-a {::dut/app-db 2}) {:res "true" :unchanged? true}))
-        (is (= (str-a {::dut/app-db -1}) {:res "false" :unchanged? false}))
-        (is (= (str-a {::dut/app-db -19}) {:res "false" :unchanged? true}))))))
+      (let [str-a (strat :pos-str #{:num})]
+        [(is (= (str-a {:num 1}) {:res "true" :unchanged? false}))
+         (is (= (str-a {:num 1}) {:res "true" :unchanged? true}))
+         (is (= (str-a {:num 2}) {:res "true" :unchanged? true}))
+         (is (= (str-a {:num -1}) {:res "false" :unchanged? false}))
+         (is (= (str-a {:num -19}) {:res "false" :unchanged? true}))]))))
+
+(register-subscription-description
+  (describe-function identity [:arg] :arg-capture identity))
+
+(deftest test-instance-subscription
+  (testing "Can handel initial args correctly"
+    (is (= ((instance-subscription :arg-capture {:pre-resolved-set #{:arg}}) {:arg :arg})
+          {:res {:arg :arg} :unchanged? false}))
+    (is (= ((instance-subscription :arg-capture {:initial-args-map {:arg :arg}}) {})
+          {:res {:arg :arg} :unchanged? false}))))
+
+
+
