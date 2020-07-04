@@ -33,7 +33,8 @@
             [clojure.spec.alpha :as s]
             [dev.freeformsoftware.fulcro-subscriptions.dependencies.deps-sorted :as dep.sorted]
             [com.stuartsierra.dependency :as dep]
-            [clojure.set :as set]))
+            [clojure.set :as set]
+            ))
 
 
 (>def ::subscription-reference #(or (keyword? %) (symbol? %)))
@@ -184,6 +185,9 @@
           (recur rest run-result)
           {:res new-res :unchanged? false})))))
 
+(defn lspy [& x] (println x) (last x))
+
+
 
 (>defn short-circuit-invocation-strategy
   "This takes a description chain and returns 
@@ -204,25 +208,25 @@
    (f-all {:a -1}
    ; => {:res \"false\" :unchanged? false}"
   [chain]
-  [(s/coll-of ::subscription-description) => [map? => any?]]
-  (let [prior-run-result (atom {})]     ;; todo: swap for volatile. In general this entire impl needs to change 
-    (fn sub-runner* [app-db]
-      (loop [[current-sub & rest] chain
-             run-result (assoc @prior-run-result
-                          :app-db app-db)
-             unchanged-set #{}]
-        (let [args (set (:requires current-sub))
-              old-res (-> current-sub :output run-result)
-              unchanged? (set/subset? args unchanged-set)
-              new-res (if unchanged? old-res ((:f current-sub) run-result))
-              unchanged? (or unchanged? (= new-res old-res))
-              run-result (assoc run-result
-                           (:output current-sub)
-                           new-res)
-              unchanged-set (cond-> unchanged-set
-                              unchanged? (conj (:output current-sub)))]
-          (if-not (empty? rest)
-            (recur rest run-result unchanged-set)
-            (do
-              (reset! prior-run-result run-result)
-              {:res new-res :unchanged? unchanged?})))))))
+  ;                                          ifn used because gspecs were run killing the internal state
+  [(s/coll-of ::subscription-description) => ifn?]
+  (let [changed?-map (volatile! (transient {}))
+        last-result (volatile! (transient {}))]
+    (fn short-circuit-invocation-strategy* [context-map]
+      (loop [[curr-fn & remaining-fns] (seq chain)
+             accumulated-result context-map]
+        (let [val-loc (::returns curr-fn)
+              changed-args? (some #(get @changed?-map % true) (::arguments curr-fn))
+              val (if changed-args?
+                    (invoke-subscription-definition curr-fn accumulated-result)
+                    (get @last-result val-loc))
+              accumulated-result (assoc accumulated-result val-loc val)
+              val-changed? (and changed-args? (not= val (get @last-result val-loc)))]
+          (vreset! changed?-map (assoc! @changed?-map val-loc val-changed?))
+          (vreset! last-result (assoc! @last-result val-loc val))
+          (if (seq remaining-fns)
+            (recur remaining-fns accumulated-result)
+            {:res val :unchanged? (not val-changed?)}))))))
+
+
+

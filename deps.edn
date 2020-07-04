@@ -14,4 +14,5 @@
                 :extra-deps  {lambdaisland/kaocha         {:mvn/version "1.0.632"}
                               org.clojure/tools.namespace {:mvn/version "1.0.0"}
                               kaocha-noyoda               {:mvn/version "2019-06-03"}
-                              org.clojure/test.check      {:mvn/version "1.0.0"}}}}}
+                              org.clojure/test.check      {:mvn/version "1.0.0"}
+                              philoskim/debux             {:mvn/version "0.7.3"}}}}}

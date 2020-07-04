@@ -41,13 +41,18 @@
 (register-subscription-description
   (describe-function str [:aa :b] :cc))
 
+(register-subscription-description
+  (describe-function pos? [::dut/app-db] :pos?))
+(register-subscription-description
+  (describe-function str [:pos?] :pos-str))
+
 ;;        dut/app-db --------
 ;;        /        \         \
 ;;       |   -------a        pos?
 ;;       |  /      /  \        \
-;;       | |  ---b     aa      
+;;       | |  ---b     aa      pos-str
 ;;       \ | /    \     /
-;;         c         cc
+;;         c        cc
 
 (deftest test-subscription-def-register
   (testing "can correctly resolve the fact that ::app-db is available"
@@ -64,7 +69,7 @@
 
 (deftest test-simple-invocation-strategy
   (testing "That the results generated are expected"
-    (let [strat (fn [goal prov] (-> (chain-descriptions goal prov) (simple-invocation-strategy)))]
+     (let [strat (fn [goal prov] (-> (chain-descriptions goal prov) (simple-invocation-strategy)))]
       (is (= ((strat :a #{::dut/app-db}) {::dut/app-db "appdb"})
             {:res "appdb" :unchanged? false}))
       (is (= ((strat :c #{::dut/app-db}) {::dut/app-db "appdb"})
@@ -85,11 +90,11 @@
             {:res "appdbAB" :unchanged? false})))))
 
 
-(deftest test-short-circuit-invocation-strategy
-  (testing "That the results generated are expected"
-    (let [strat (fn [goal prov] (-> (chain-descriptions goal prov) (short-circuit-invocation-strategy)))]
+(let [strat (fn [goal prov] (-> (chain-descriptions goal prov) (short-circuit-invocation-strategy)))]
+  (deftest test-short-circuit-invocation-strategy
+    (testing "has the same results as the simple invocation"
       (is (= ((strat :a #{::dut/app-db}) {::dut/app-db "appdb"})
-            {:res "appdb" :unchanged? false}))
+               {:res "appdb" :unchanged? false}))
       (is (= ((strat :c #{::dut/app-db}) {::dut/app-db "appdb"})
             ;; appdb    a    b
             {:res "appdbappdbappdb" :unchanged? false}))
@@ -97,12 +102,19 @@
             ;; appdb    ab
             {:res "appdbAA" :unchanged? false}))
       (is (= ((strat :c #{::dut/app-db :a}) {::dut/app-db "appdb"
-                                             :a "A" :b "B"})
+                                             :a           "A" :b "B"})
             ;; this works because if you pass addl args that you don't specify beforehand
             ;; they might get stomped on.
             ;; appdb    ab
             {:res "appdbAA" :unchanged? false}))
       (is (= ((strat :c #{::dut/app-db :a :b}) {::dut/app-db "appdb"
-                                                :a "A" :b "B"})
+                                                :a           "A" :b "B"})
             ;; appdb    ab
-            {:res "appdbAB" :unchanged? false})))))
+            {:res "appdbAB" :unchanged? false})))
+    (testing "unchanged? should work."
+      (let [str-a (strat :pos-str #{::dut/app-db})]
+        (is (= (str-a {::dut/app-db 1}) {:res "true" :unchanged? false}))
+        (is (= (str-a {::dut/app-db 1}) {:res "true" :unchanged? true}))
+        (is (= (str-a {::dut/app-db 2}) {:res "true" :unchanged? true}))
+        (is (= (str-a {::dut/app-db -1}) {:res "false" :unchanged? false}))
+        (is (= (str-a {::dut/app-db -19}) {:res "false" :unchanged? true}))))))
