@@ -5,13 +5,17 @@
   (:require [com.fulcrologic.guardrails.core :refer [>defn => >def]]
             [clojure.spec.alpha :as s]))
 
+;; this will probably be updated to properly support multiple apps being mounted.
+;; esp useful for workspaces
 
+
+;; needs a nice way to feed in initial state...
 
 
 (defonce subscription-fns (atom #{}))
 
 
-
+(defn- disjset [s k] (or (disj s k) #{}))
 
 
 (>defn register-sub-fn!
@@ -32,12 +36,12 @@
   "Accepts a subscription, and removes it from the db."
   ([sub]
    [any? => any?]
-   (swap! subscription-fns disj sub)))
+   (swap! subscription-fns disjset sub)))
 
 
-(>defn all-subs 
+(>defn all-subs
   "This is the default all-subs fn. This allows you to replace this ns with some other backend."
   []
   [=> seq?]
-  (seq @subscription-fns))
+  (or (seq @subscription-fns) (list)))
 

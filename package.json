@@ -1,0 +1,21 @@
+{
+    "name": "app",
+    "version": "1.0.0",
+    "description": "",
+    "private": true,
+    "dependencies": {
+        "highlight.js": "9.18.1",
+        "react-grid-layout": "0.16.6"
+    },
+    "scripts": {
+        "shadow-server": "shadow-cljs server"
+    },
+    "devDependencies": {
+        "less": "^3.11.1",
+        "react": "^16.6.8",
+        "react-dom": "^16.6.8",
+        "shadow-cljs": "^2.9.7"
+    },
+    "author": "",
+    "license": "MIT"
+}

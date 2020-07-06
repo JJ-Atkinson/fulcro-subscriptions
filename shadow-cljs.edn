@@ -1,0 +1,14 @@
+{:deps     {:aliases [:workspaces]}
+ :nrepl    {:port 9000}
+ :dev-http {9001 "resources/public"}
+ :jvm-opts ["-Xmx1G"]
+ :builds   {:workspaces {:target     nubank.workspaces.shadow-cljs.target
+                         :ns-regexp  "-(test|ws)$"
+                         :output-dir "resources/public/workspaces/js"
+                         :asset-path "/js/workspaces"
+                         ;:preloads   [com.fulcrologic.fulcro.inspect.preload]
+                         :devtools   {:preloads           [com.fulcrologic.fulcro.inspect.preload]
+                                      :http-root          "resources/public/workspaces"
+                                      :http-port          8023
+                                      :http-resource-root "."}}}}
+

@@ -2,7 +2,8 @@
   (:require [clojure.test :refer :all]
             [dev.freeformsoftware.fulcro-subscriptions.dependencies.deps-sorted :refer :all]
             [dev.freeformsoftware.metacomet.testing-utils :as mc.tu]
-            [com.stuartsierra.dependency :as dep]))
+            [com.stuartsierra.dependency :as dep]
+            ))
 
 ;       :a
 ;    /   |   \

@@ -2,17 +2,27 @@
  :paths ["src/main"]
 
 
- :deps  {com.fulcrologic/guardrails     {:mvn/version "0.0.12"}
+ :deps  {org.clojure/clojure            {:mvn/version "1.10.1" :scope "provided"}
+         org.clojure/clojurescript      {:mvn/version "1.10.758" :scope "provided"}
+
+         com.fulcrologic/guardrails     {:mvn/version "0.0.12" :scope "provided"}
          dev.freeformsoftware/metacomet {:git/url "https://github.com/JJ-Atkinson/metacomet.git"
                                          :sha     "2cd5cac2d6460d7c86785a2ff4365236c5f1ac40"}
-         com.stuartsierra/dependency    {:mvn/version "1.0.0"}}
+         com.stuartsierra/dependency    {:mvn/version "1.0.0"}
+         com.fulcrologic/fulcro         {:mvn/version "3.2.11" :scope "provided"}
+         com.github.awkay/workspaces    {:mvn/version "1.0.1" :scope "provided"}}
 
 
  :aliases
-        {:test {:extra-paths ["src/test" "src/dev"]
-                :jvm-opts    ["-Dguardrails.enabled"]
-                :extra-deps  {lambdaisland/kaocha         {:mvn/version "1.0.632"}
-                              org.clojure/tools.namespace {:mvn/version "1.0.0"}
-                              kaocha-noyoda               {:mvn/version "2019-06-03"}
-                              org.clojure/test.check      {:mvn/version "1.0.0"}
-                              philoskim/debux             {:mvn/version "0.7.3"}}}}}
+        {:test       {:extra-paths ["src/test" "src/dev"]
+                      :jvm-opts    ["-Dguardrails.enabled"]
+                      :extra-deps  {lambdaisland/kaocha         {:mvn/version "1.0.632"}
+                                    org.clojure/tools.namespace {:mvn/version "1.0.0"}
+                                    kaocha-noyoda               {:mvn/version "2019-06-03"}
+                                    org.clojure/test.check      {:mvn/version "1.0.0"}
+                                    philoskim/debux             {:mvn/version "0.7.3"}}}
+         :workspaces {:extra-paths ["src/workspaces"]
+                      :jvm-opts    ["-Dguardrails.enabled"]
+                      :extra-deps  {thheller/shadow-cljs {:mvn/version "2.8.110"}
+                                    binaryage/devtools   {:mvn/version "1.0.0"}
+                                    }}}}
