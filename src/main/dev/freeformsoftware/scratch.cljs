@@ -237,115 +237,116 @@
 ;     value)))
 ;
 ;
-;
-;(defn gen-sale []
-;  #:sale{:id     (rand-int 99999999)
-;         :amount (rand-int 80)})
-;
-;(defn gen-customer []
-;  #:customer{:id        (rand-int 99999999)
-;             :name      (rand-nth names)
-;             :purchases [(gen-sale)
-;                         (gen-sale)]})
-;
-;
-;(defmutation add-sale [{:keys [cust-id]}]
-;  (action [{:keys [state]}]
-;    (swap! state merge/merge-component Sale (gen-sale)
-;      :append [:customer/id cust-id :customer/purchases])))
-;
-;
-;(defmutation add-cust [{:keys []}]
-;  (action [{:keys [state]}]
-;    (swap! state merge/merge-component Customer (gen-customer)
-;      :append [:top/id 1 :top/customers])))
-;
-;(defmutation remove-cust [{:keys [cust-id]}]
-;  (action [{:keys [state]}]
-;    (swap! state #(-> % (merge/remove-ident* [:customer/id cust-id]
-;                          [:top/id 1 :top/customers])
-;                    (update-in [:customer/id] dissoc cust-id)))))
-;
-;
-;
-;(defsc Sale [this {:keys [sale/id sale/amount] :as props}]
-;  {:query         [:sale/id
-;                   :sale/amount]
-;   :ident         :sale/id
-;   :initial-state #:sale{:id     :param/id
-;                         :amount :param/amount}}
-;  (str "Sale: $" amount))
-;
-;(def ui-sale (comp/factory Sale {:keyfn :sale/id}))
-;
-;
-;
-;
-;
-;(defsc Customer [this {:customer/keys [id name purchases] :as props}]
-;  {:query      [:customer/id
-;                :customer/name
-;                {:customer/purchases (comp/get-query Sale)}]
-;   :ident      :customer/id
-;   :use-hooks? true}
-;  (let [sales-total (use-sub (fn []
-;                               (instance-sub-slow? (sum-customer-sales< id)))
-;                      true)]
-;    (dom/div
-;      (dom/h4 name)
-;      (dom/button
-;        {:onClick (fn [e] (comp/transact! this [(add-sale {:cust-id id})]))}
-;        "+ Add Sale")
-;      (dom/butto(>defn register-subscription)n
-;        {:onClick (fn [e] (comp/transact! this [(remove-cust {:cust-id id})]))}
-;        "- Remove Self")
-;      (dom/div (str "sum of my sales " sales-total))
-;      (dom/ul
-;        (mapv #(dom/li (ui-sale %)) purchases))
-;      (dom/hr))))
-;
-;(def ui-customer (comp/factory Customer {:keyfn :customer/id}))
-;
-;
-;
-;(defsc Top [this {:keys [top/id top/customers] :as props}]
-;  {:query         [:top/id
-;                   {:top/customers (comp/get-query Customer)}]
-;   :ident         :top/id
-;   :initial-state (fn [_] #:top{:id        1
-;                                :customers [(gen-customer)
-;                                            (gen-customer)]})
-;   :use-hooks?    true}
-;  ;; in here so I have access to it asap. :client-did-mount is called after first render
-;  ;; afaict
-;  (reset! SPA (comp/any->app this))
-;  (let [sum (use-sub (instance-sub-fast? sum-all-sales<))
-;        customer-count (use-sub (instance-sub-fast? customer-count<))]
-;
-;    (dom/div
-;      (dom/button
-;        {:onClick (fn [e]
-;                    (comp/transact! this [(add-cust {})]))}
-;        "+ Add Customer")
-;      (dom/h2 (str "Number of customers " customer-count))
-;      (dom/h2 (str "Sum of customer sales: " sum))
-;
-;      (mapv ui-customer customers))))
+
+(defn gen-sale []
+  #:sale{:id     (rand-int 99999999)
+         :amount (rand-int 80)})
+
+(defn gen-customer []
+  #:customer{:id        (rand-int 99999999)
+             :name      (rand-nth names)
+             :purchases [(gen-sale)
+                         (gen-sale)]})
+
+
+(defmutation add-sale [{:keys [cust-id]}]
+  (action [{:keys [state]}]
+    (swap! state merge/merge-component Sale (gen-sale)
+      :append [:customer/id cust-id :customer/purchases])))
+
+
+(defmutation add-cust [{:keys []}]
+  (action [{:keys [state]}]
+    (swap! state merge/merge-component Customer (gen-customer)
+      :append [:top/id 1 :top/customers])))
+
+(defmutation remove-cust [{:keys [cust-id]}]
+  (action [{:keys [state]}]
+    (swap! state #(-> % (merge/remove-ident* [:customer/id cust-id]
+                          [:top/id 1 :top/customers])
+                    (update-in [:customer/id] dissoc cust-id)))))
+
+
+
+(defsc Sale [this {:keys [sale/id sale/amount] :as props}]
+  {:query         [:sale/id
+                   :sale/amount]
+   :ident         :sale/id
+   :initial-state #:sale{:id     :param/id
+                         :amount :param/amount}}
+  (str "Sale: $" amount))
+
+(def ui-sale (comp/factory Sale {:keyfn :sale/id}))
+
+
+
+
+
+(defsc Customer [this {:customer/keys [id name purchases] :as props}]
+  {:query      [:customer/id
+                :customer/name
+                {:customer/purchases (comp/get-query Sale)}]
+   :ident      :customer/id
+   :use-hooks? true}
+  (let [sales-total (use-sub (fn []
+                               (instance-sub-slow? (sum-customer-sales< id)))
+                      true)]
+    (dom/div
+      (dom/h4 name)
+      (dom/button
+        {:onClick (fn [e] (comp/transact! this [(add-sale {:cust-id id})]))}
+        "+ Add Sale")
+      (dom/butto(>defn register-subscription)n
+        {:onClick (fn [e] (comp/transact! this [(remove-cust {:cust-id id})]))}
+        "- Remove Self")
+      (dom/div (str "sum of my sales " sales-total))
+      (dom/ul
+        (mapv #(dom/li (ui-sale %)) purchases))
+      (dom/hr))))
+
+(def ui-customer (comp/factory Customer {:keyfn :customer/id}))
+
 ;
 ;
-;(def ui-top (comp/factory Top {:keyfn :top/id}))
-;
-;
-;
-;
-;(ws/defcard reducer4-card
-;  (ct.fulcro/fulcro-card
-;    {::ct.fulcro/wrap-root? true
-;     ::ct.fulcro/root       Top
-;     ;; NOTE: Just invented tx-hook...simple add to tx-processing
-;
-;     ::ct.fulcro/app        {:optimized-render! render!}
-;     }))
-;
-;
+(defsc Top [this {:keys [top/id top/customers] :as props}]
+  {:query         [:top/id
+                   {:top/customers (comp/get-query Customer)}]
+   :ident         :top/id
+   :initial-state (fn [_] #:top{:id        1
+                                :customers [(gen-customer)
+                                            (gen-customer)]})
+   :use-hooks?    true}
+  ;; in here so I have access to it asap. :client-did-mount is called after first render
+  ;; afaict
+  (reset! SPA (comp/any->app this))
+  (let [sum (use-sub (instance-sub-fast? sum-all-sales<))
+        customer-count (use-sub (instance-sub-fast? customer-count<))]
+
+    (dom/div
+      (dom/button
+        {:onClick (fn [e]
+                    (comp/transact! this [(add-cust {})]))}
+        "+ Add Customer")
+      (dom/h2 (str "Number of customers " customer-count))
+      (dom/h2 (str "Sum of customer sales: " sum))
+
+      (mapv ui-customer customers))))
+
+
+(def ui-top (comp/factory Top {:keyfn :top/id}))
+
+
+
+
+(ws/defcard reducer4-card
+  (ct.fulcro/fulcro-card
+    {::ct.fulcro/wrap-root? true
+     ::ct.fulcro/root       Top
+     ;; NOTE: Just invented tx-hook...simple add to tx-processing
+
+     ::ct.fulcro/app        {:optimized-render! render!}
+     }))
+
+
+
 ;

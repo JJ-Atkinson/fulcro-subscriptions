@@ -19,7 +19,7 @@
 
 
 (defn wrap-render!
-  ":before is call before render. :after is call after render"
+  ""
   ([renderer]
    (wrap-render! renderer {}))
   ([renderer {:keys []}]

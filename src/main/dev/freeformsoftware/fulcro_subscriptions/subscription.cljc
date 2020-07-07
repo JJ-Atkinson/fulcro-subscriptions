@@ -33,25 +33,55 @@
             [clojure.spec.alpha :as s]
             [dev.freeformsoftware.fulcro-subscriptions.dependencies.deps-sorted :as dep.sorted]
             [com.stuartsierra.dependency :as dep]
-            [clojure.set :as set]
-            ))
+            #?(:cljs [dev.freeformsoftware.fulcro-subscriptions.hooks :as hooks])
+            [clojure.set :as set])
+  #?(:cljs (:require-macros [dev.freeformsoftware.fulcro-subscriptions.subscription])))
+
+(declare application-strategies)
+(declare application-functions)
+
+(>def ::subscription-reference
+  "Subscriptions can be either named by keywords or symbols depending on the section of the api 
+   you decide to work with. "
+  #(or (keyword? %) (symbol? %)))
+
+(>def ::f
+  "The root function passed to the whole system. Everything revolves around the function given here.
+   Can have any api structure you desire, but it must be wrapped in an ::invocation-fn such that
+   (fn [all-args] result) is returned. Should not return the map with the result assoced on. "
+  ifn?)
+(>def ::inputs
+  "Collection of references to which keys the sub depends on."
+  (s/coll-of ::subscription-reference))
+(>def ::outputs
+  "What does the subscription provided?"
+  ::subscription-reference)
+(>def ::invocation-fn
+  "See ::f"
+  (s/or :function ifn? :keyword #(contains? application-functions %)))
+
+(>def ::name
+  "The defsubscription macro is more restrictive in naming. (idea - maybe expand the api definition
+   so that defsubscription actually creates a keyword and a symbol version)"
+  symbol?)
+(>def ::invocation-strategy
+  "Invocation strategies are ways to convert a list of ::subscription-description into a form consumable
+   by a render api. See the implementation of the default of both for more details.
+   (the reason to support keywords is as a shorthand for the default functions via keyword)"
+  (s/or :function ifn? :keyword #(contains? application-functions %)))
+(>def ::pre-resolved-keys set?)
+
+(>def ::subscription-description (s/keys :req [::f ::inputs ::outputs ::invocation-fn]))
 
 
-(>def ::subscription-reference #(or (keyword? %) (symbol? %)))
 
-(>def ::f ifn?)
-(>def ::arguments (s/coll-of ::subscription-reference))
-(>def ::returns ::subscription-reference)
-(>def ::invocation-fn ifn?)
-
-(>def ::subscription-description (s/keys :req [::f ::arguments ::returns ::invocation-fn]))
-
+;; Describe nice shortcuts to go from random function to a function that works on a map
 
 
 (defn linear-apply-f
   "Apply f to a linear based function. e.g.
     {::f             (fn [a b c] ...)
-     ::arguments     [:a :b :c]
+     ::inputs        [:a :b :c]
      ::invocation-fn linear-apply-f)"
   [f arg-list arg-map]
   (apply f (map #(get arg-map %) arg-list)))
@@ -59,46 +89,56 @@
 (defn map-apply-f
   "Apply f to a map based function. e.g.
   {::f             (fn [{:keys [a b c]}] ...)
-   ::arguments     [:a :b :c]
+   ::inputs        [:a :b :c]
    ::invocation-fn map-apply-f)"
   [f arg-list arg-map]
   (f arg-map))
 
 
+(def ^:private application-functions {:linear-apply linear-apply-f
+                                      :map-apply    map-apply-f})
+
+
+;; Nice way to take some subscription definition and apply it to a map
+
 (>defn invoke-subscription-definition
-  "Not the same as `apply-description-definition`. This will take an argument map and apply it as the arguments
+  "Not the same as `apply-description-definition`. This will take an argument map and apply it as the inputs
    to the subscription definition. Will directly return the value of the function."
   [sub-def args]
   [::subscription-description (? map?) => any?]
   ((::invocation-fn sub-def) args))
 
 (>defn apply-description-definition
-  "Not the same as `invoke-subscription-definition`. This will take an argument map and apply it as the arguments
+  "Not the same as `invoke-subscription-definition`. This will take an argument map and apply it as the inputs
    to the subscription definition. Will return the original args with the result of the invocation added to the map."
   ;; not currently used in any implementation, but could be useful at some point.
   [sub-def args]
   [::subscription-description (? map?) => map?]
   (assoc args
-    (::returns sub-def) (invoke-subscription-definition sub-def args)))
+    (::outputs sub-def) (invoke-subscription-definition sub-def args)))
 
+
+;; Core of the api. Describe how a function behaves in the tree. This is what is reified
+;; when registering a subscription node
 
 (>defn describe-function
-  "This is the most basic layer of the default engine. Given a description of the arguments, return, and
+  "This is the most basic layer of the default engine. Given a description of the inputs, return, and
    function, create a description that can be used to dynamically invoke the function given an argument
    map. Also used in dependency resolution.
    
-   Since functions can sometimes take a map of arguments, and sometimes take the arguments linearly, there
+   Since functions can sometimes take a map of inputs, and sometimes take the inputs linearly, there
    is an option to switch the function used to apply f to an argument map. Built in options are
    [[linear-apply-f]] and [[map-apply-f]]."
   ([f args ret]
    [ifn? (s/coll-of ::subscription-reference) ::subscription-reference => ::subscription-description]
-   (describe-function f args ret (partial linear-apply-f f args)))
+   (describe-function f args ret linear-apply-f))
   ([f args ret invocation-fn]
-   [ifn? (s/coll-of ::subscription-reference) ::subscription-reference ifn? => ::subscription-description]
+   [ifn? (s/coll-of ::subscription-reference) ::subscription-reference any? => ::subscription-description]
    {::f             f
-    ::arguments     args
-    ::returns       ret
-    ::invocation-fn invocation-fn}))
+    ::inputs        args
+    ::outputs       ret
+    ::invocation-fn (partial (get application-functions invocation-fn invocation-fn)
+                      f args)}))
 
 
 
@@ -114,6 +154,24 @@
                                              ::descriptions     {}}))
 (reset-subscription-description-register!)
 
+
+(>defn register-subscription-description
+  "USAGE NOTE: there is an implicit function pre-registered called ::app-db. It is a no dependency function
+   that jut uses the app db provided by the subscription runner plugin added to fulcro.
+   "
+  ([subscription-description]
+   [::subscription-description => any?]
+   (let [{::keys [inputs outputs]} subscription-description
+         {::keys [dependency-graph descriptions]} @subscription-description-registry
+         dep-graph (reduce (fn [g arg] (dep/depend g outputs arg))
+                     dependency-graph inputs)]
+     (reset! subscription-description-registry
+       {::dependency-graph dep-graph
+        ::descriptions     (assoc descriptions
+                             outputs subscription-description)}))))
+
+
+;; Create a list of descriptions in proper execution order with some options
 
 
 (>defn chain-descriptions
@@ -136,24 +194,8 @@
      fns)))
 
 
-(>defn register-subscription-description
-  "USAGE NOTE: there is an implicit function pre-registered called ::app-db. It is a no dependency function
-   that jut uses the app db provided by the subscription runner plugin added to fulcro.
-   
-   This returns a delay"
-  ([subscription-description]
-   [::subscription-description => any?]
-   (let [{::keys [arguments returns]} subscription-description
-         {::keys [dependency-graph descriptions]} @subscription-description-registry
-         dep-graph (reduce (fn [g arg] (dep/depend g returns arg))
-                     dependency-graph arguments)]
-     (reset! subscription-description-registry
-       {::dependency-graph dep-graph
-        ::descriptions     (assoc descriptions
-                             returns subscription-description)}))))
-
-
-
+;; Create a way to run a list of descriptions against a map. These implementations support the 
+;; api handled in simple-render-fn of {:unchanged? boolean} to speed execution
 
 (>defn simple-invocation-strategy
   "This takes a description chain and returns 
@@ -179,13 +221,11 @@
            run-result context-map]
       (let [new-res (invoke-subscription-definition current-sub run-result)
             run-result (assoc run-result
-                         (::returns current-sub)
+                         (::outputs current-sub)
                          new-res)]
         (if-not (empty? rest)
           (recur rest run-result)
           {:res new-res :unchanged? false})))))
-
-(defn lspy [& x] (println x) (last x))
 
 
 
@@ -215,8 +255,8 @@
     (fn short-circuit-invocation-strategy* [context-map]
       (loop [[curr-fn & remaining-fns] (seq chain)
              accumulated-result context-map]
-        (let [val-loc (::returns curr-fn)
-              changed-args? (some #(get @changed?-map % true) (::arguments curr-fn))
+        (let [val-loc (::outputs curr-fn)
+              changed-args? (some #(get @changed?-map % true) (::inputs curr-fn))
               val (if changed-args?
                     (invoke-subscription-definition curr-fn accumulated-result)
                     (get @last-result val-loc))
@@ -227,6 +267,16 @@
           (if (seq remaining-fns)
             (recur remaining-fns accumulated-result)
             {:res val :unchanged? (not val-changed?)}))))))
+
+
+(def ^:private application-strategies {:simple-invocation-strategy        simple-invocation-strategy
+                                       :short-circuit-invocation-strategy short-circuit-invocation-strategy})
+
+
+;; nice api that collects several concerns together (with some sane defaults)
+;;  - Creating a chain of functions based off of registered subscriptions
+;;  - How to manage initial arguments
+;;  - Avoiding pre-resolved keys
 
 
 (>defn instance-subscription
@@ -258,3 +308,116 @@
        (fn wrap-merge-initial-args* [args]
          (runner (merge args initial-args-map)))
        runner))))
+
+
+;; Here we get to the meat. This is the most used part of the interface, allowing you
+;; to easily add subscription functions to the general api and then use them inside
+;; components. 
+
+
+(>def ::subscription-map (s/keys :opt [::inputs
+                                       ::invocation-strategy
+                                       ::invocation-fn
+                                       ::pre-resolved-keys]))
+
+
+(>def ::dependency-chain
+  "Should be a deref, but not sure how to spec that."
+  any?)
+(>def ::subscription-map-ref (s/merge ::subscription-map
+                               (s/keys :req [::outputs
+                                             ::dependency-chain
+                                             ::invocation-strategy])))
+
+(def ^:dynamic *subscription-defaults*
+  {::invocation-fn       linear-apply-f
+   ::pre-resolved-keys   #{::app-db}
+   ::invocation-strategy short-circuit-invocation-strategy})
+
+(>defn defsubscription*
+  "Backend implementation of the macro defsubscription. This has almost the exact
+   same shape api, and can be used interchangeably. The defusbscription macro is
+   simply sugar that will make it easier to identify. Because of how this function is used though,
+   it has a slightly less restrictive api than defsubscription in that the name can be a keyword. Names
+   must be symbols for the macro. PSA: this is only ever executed at runtime. No information
+   is currently available at compile time about which subscriptions are created.
+   
+   An issue arises here though - how do I support ::pre-resolved-keys (used for passing in arguments
+   to the subscription, like an ident or something) which have the ability to elide
+   parts of the subscription tree? The ultimate decision is that the most likely use case of 
+   ::pre-resolved-keys is to prevent looking for subscriptions that don't exist in the tree,
+   and soley are used outside. This enables a strategy of compiling the tree and then pruning
+   off all the elements that are in pre-provided-keys.
+   
+   Returns a map of the following structure (this map is used in the [[subscribe]] function
+   in this namespace to resolve all the required functions.). This structure is also sent
+   to the register atom. 
+   
+   
+   {::inputs      Vector of dependencies
+    ::outputs "
+  [f name opts]
+  [ifn? ::subscription-reference ::subscription-map => ::subscription-map-ref]
+  (let [opts (assoc opts ::outputs name)
+        opts (merge *subscription-defaults* opts)
+        opts (merge
+               opts
+               (describe-function f (::inputs opts) name (::invocation-fn opts)))]
+    (register-subscription-description opts)
+    (assoc opts
+      ::dependency-chain (delay (let [_ (println "trying resolve" name)
+                                      descriptions (chain-descriptions name)
+                                      _ (println descriptions)
+                                      pre-resolved (apply set/union
+                                                     (map ::pre-resolved-keys descriptions))
+                                      pruned (remove #(or (contains? pre-resolved (::outputs %))
+                                                        (nil? %))
+                                               descriptions)]
+                                  pruned)))))
+
+
+
+(s/def ::defsubscription-arg-map
+  (s/cat
+    :sym ::name
+    :doc (s/? string?)
+    :argument-vector vector?
+    :opt-map ::subscription-map
+    :body any?))
+
+#?(:clj
+   (defmacro defsubscription
+     "See defsubscription*"
+     [& args]
+     (let [clean-symbol (fn [s?]
+                          (cond (keyword? s?) s?
+                                (namespace s?) s?
+                                :default (symbol (name (ns-name *ns*)) (name s?))))
+           quote-symbol (fn [s?] (if (symbol? s?) `(quote ~s?) s?))
+
+           {:keys [sym doc argument-vector opt-map body]
+            :or   {doc ""} :as args} (s/conform ::defsubscription-arg-map args)
+           clean-inputs (update opt-map ::inputs (fn [x] (mapv (comp quote-symbol clean-symbol) x)))]
+       (let [fqsym (clean-symbol sym)]
+         `(def ~sym ~doc
+            (dev.freeformsoftware.fulcro-subscriptions.subscription/defsubscription*
+              (fn ~sym ~argument-vector ~body) '~fqsym ~clean-inputs))))))
+
+#?(:cljs
+   (>defn subscribe!
+     "Take some defsubscription (and optionally some context arguments) to generate a 
+      subscription using hooks. Make a new function to use something other than the default
+      hooks implementation. Supports the same args as `use-sub` inside the defsubscription"
+     ([reference]
+      [::subscription-map-ref => any?]
+      (subscribe! reference nil))
+     ([reference initial-args]
+      [::subscription-map-ref (? map?) => any?]
+      (let [{::keys [invocation-strategy dependency-chain]} reference]
+        (hooks/use-sub
+          (fn []
+            (let [is (invocation-strategy @dependency-chain)]
+              (if initial-args
+                (fn intermediate-merge* [args] (is (merge initial-args args)))
+                is)))
+          (assoc reference :lazy? true))))))
