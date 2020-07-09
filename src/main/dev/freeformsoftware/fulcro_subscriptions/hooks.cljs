@@ -23,7 +23,7 @@
    will use the invoke-sub! function in simple-render-fn. To change this make a new function."
   ([sub-fn] (use-sub sub-fn {}))
   ([sub-fn-or-sub {:keys [lazy? appish initial-default-value]
-                   :or {lazy? false initial-default-value 1}}]
+                   :or {lazy? false initial-default-value nil}}]
    (let [[value set-v!] (hooks/use-state initial-default-value)]
      ; use a nil signal. This should never run again during the course of the component....
      ; or should it? Maybe the signal can be the sub fn? Dynamic subs? Will address later...

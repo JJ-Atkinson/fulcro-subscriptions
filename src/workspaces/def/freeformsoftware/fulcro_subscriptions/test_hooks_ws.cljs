@@ -121,26 +121,26 @@
     sales-list))
 
 
-(sub/defsubscription all-sales [adb]
-  {::sub/inputs [::sub/app-db]}
+(sub/defprovider all-sales [adb]
+  {::sub/providers [::sub/app-db]}
   (:sale/id adb))
 
-(sub/defsubscription all-customers [adb]
-  {::sub/inputs [::sub/app-db]}
+(sub/defprovider all-customers [adb]
+  {::sub/providers [::sub/app-db]}
   (:customer/id adb))
 
-(sub/defsubscription customer-count [customer-list]
-  {::sub/inputs [all-customers]}
+(sub/defprovider customer-count [customer-list]
+  {::sub/providers [all-customers]}
   (count customer-list))
 
 
-(sub/defsubscription sum-all-sales [sales]
-  {::sub/inputs [all-sales]}
+(sub/defprovider sum-all-sales [sales]
+  {::sub/providers [all-sales]}
   (sum-sales-list (vals sales)))
 
-(sub/defsubscription sum-self-sales [sales-table customer-table cust-id]
-  {::sub/inputs            [all-sales all-customers :customer/id]
-   ::sub/pre-resolved-keys #{:customer/id}}
+(sub/defprovider sum-self-sales [sales-table customer-table cust-id]
+  {::sub/providers [all-sales all-customers :customer/id]
+   ::sub/params    #{:customer/id}}
   (let [cust-purch (get-in customer-table [cust-id :customer/purchases])
         sales (map #(get sales-table (second %)) cust-purch)]
     (sum-sales-list sales)))
@@ -167,7 +167,7 @@
                 {:customer/purchases (comp/get-query Sale)}]
    :ident      :customer/id
    :use-hooks? true}
-  (let [sales-total (sub/subscribe! sum-self-sales {:customer/id id})]
+  (let [sales-total (sub/subscribe! this sum-self-sales {:customer/id id})]
     (dom/div
       (dom/h4 name)
       (dom/button
@@ -199,8 +199,8 @@
   ;; in here so I have access to it asap. :client-did-mount is called after first render
   ;; afaict
   (reset! SPA (comp/any->app this))
-  (let [sum (sub/subscribe! sum-all-sales)
-        customer-count (sub/subscribe! customer-count)]
+  (let [sum (sub/subscribe! this sum-all-sales)
+        customer-count (sub/subscribe! this customer-count)]
 
     (dom/div
       (dom/button

@@ -50,7 +50,7 @@
    Can have any api structure you desire, but it must be wrapped in an ::invocation-fn such that
    (fn [all-args] result) is returned. Should not return the map with the result assoced on. "
   ifn?)
-(>def ::inputs
+(>def ::providers
   "Collection of references to which keys the sub depends on."
   (s/coll-of ::subscription-reference))
 (>def ::outputs
@@ -61,17 +61,17 @@
   (s/or :function ifn? :keyword #(contains? application-functions %)))
 
 (>def ::name
-  "The defsubscription macro is more restrictive in naming. (idea - maybe expand the api definition
-   so that defsubscription actually creates a keyword and a symbol version)"
+  "The defprovider macro is more restrictive in naming. (idea - maybe expand the api definition
+   so that defprovider actually creates a keyword and a symbol version)"
   symbol?)
 (>def ::invocation-strategy
   "Invocation strategies are ways to convert a list of ::subscription-description into a form consumable
    by a render api. See the implementation of the default of both for more details.
    (the reason to support keywords is as a shorthand for the default functions via keyword)"
   (s/or :function ifn? :keyword #(contains? application-functions %)))
-(>def ::pre-resolved-keys set?)
+(>def ::params set?)
 
-(>def ::subscription-description (s/keys :req [::f ::inputs ::outputs ::invocation-fn]))
+(>def ::subscription-description (s/keys :req [::f ::providers ::outputs ::invocation-fn]))
 
 
 
@@ -135,7 +135,7 @@
   ([f args ret invocation-fn]
    [ifn? (s/coll-of ::subscription-reference) ::subscription-reference any? => ::subscription-description]
    {::f             f
-    ::inputs        args
+    ::providers     args
     ::outputs       ret
     ::invocation-fn (partial (get application-functions invocation-fn invocation-fn)
                       f args)}))
@@ -161,10 +161,10 @@
    "
   ([subscription-description]
    [::subscription-description => any?]
-   (let [{::keys [inputs outputs]} subscription-description
+   (let [{::keys [providers outputs]} subscription-description
          {::keys [dependency-graph descriptions]} @subscription-description-registry
          dep-graph (reduce (fn [g arg] (dep/depend g outputs arg))
-                     dependency-graph inputs)]
+                     dependency-graph providers)]
      (reset! subscription-description-registry
        {::dependency-graph dep-graph
         ::descriptions     (assoc descriptions
@@ -191,7 +191,7 @@
                 (set pre-resolved))
          desc (::descriptions subscription-description-register)
          fns (map #(get desc %) deps)]
-     fns)))
+     (remove nil? fns))))
 
 
 ;; Create a way to run a list of descriptions against a map. These implementations support the 
@@ -256,7 +256,7 @@
       (loop [[curr-fn & remaining-fns] (seq chain)
              accumulated-result context-map]
         (let [val-loc (::outputs curr-fn)
-              changed-args? (some #(get @changed?-map % true) (::inputs curr-fn))
+              changed-args? (some #(get @changed?-map % true) (::providers curr-fn))
               val (if changed-args?
                     (invoke-subscription-definition curr-fn accumulated-result)
                     (get @last-result val-loc))
@@ -315,10 +315,10 @@
 ;; components. 
 
 
-(>def ::subscription-map (s/keys :opt [::inputs
+(>def ::subscription-map (s/keys :opt [::providers
                                        ::invocation-strategy
                                        ::invocation-fn
-                                       ::pre-resolved-keys]))
+                                       ::params]))
 
 
 (>def ::dependency-chain
@@ -331,14 +331,14 @@
 
 (def ^:dynamic *subscription-defaults*
   {::invocation-fn       linear-apply-f
-   ::pre-resolved-keys   #{::app-db}
+   ::params              #{::app-db}
    ::invocation-strategy short-circuit-invocation-strategy})
 
-(>defn defsubscription*
-  "Backend implementation of the macro defsubscription. This has almost the exact
+(>defn defprovider*
+  "Backend implementation of the macro defprovider. This has almost the exact
    same shape api, and can be used interchangeably. The defusbscription macro is
    simply sugar that will make it easier to identify. Because of how this function is used though,
-   it has a slightly less restrictive api than defsubscription in that the name can be a keyword. Names
+   it has a slightly less restrictive api than defprovider in that the name can be a keyword. Names
    must be symbols for the macro. PSA: this is only ever executed at runtime. No information
    is currently available at compile time about which subscriptions are created.
    
@@ -362,14 +362,14 @@
         opts (merge *subscription-defaults* opts)
         opts (merge
                opts
-               (describe-function f (::inputs opts) name (::invocation-fn opts)))]
+               (describe-function f (::providers opts) name (::invocation-fn opts)))]
     (register-subscription-description opts)
     (assoc opts
       ::dependency-chain (delay (let [_ (println "trying resolve" name)
                                       descriptions (chain-descriptions name)
                                       _ (println descriptions)
                                       pre-resolved (apply set/union
-                                                     (map ::pre-resolved-keys descriptions))
+                                                     (map ::params descriptions))
                                       pruned (remove #(or (contains? pre-resolved (::outputs %))
                                                         (nil? %))
                                                descriptions)]
@@ -377,7 +377,7 @@
 
 
 
-(s/def ::defsubscription-arg-map
+(s/def ::defprovider-arg-map
   (s/cat
     :sym ::name
     :doc (s/? string?)
@@ -386,8 +386,8 @@
     :body any?))
 
 #?(:clj
-   (defmacro defsubscription
-     "See defsubscription*"
+   (defmacro defprovider
+     "See defprovider*"
      [& args]
      (let [clean-symbol (fn [s?]
                           (cond (keyword? s?) s?
@@ -396,23 +396,23 @@
            quote-symbol (fn [s?] (if (symbol? s?) `(quote ~s?) s?))
 
            {:keys [sym doc argument-vector opt-map body]
-            :or   {doc ""} :as args} (s/conform ::defsubscription-arg-map args)
-           clean-inputs (update opt-map ::inputs (fn [x] (mapv (comp quote-symbol clean-symbol) x)))]
+            :or   {doc ""} :as args} (s/conform ::defprovider-arg-map args)
+           clean-inputs (update opt-map ::providers (fn [x] (mapv (comp quote-symbol clean-symbol) x)))]
        (let [fqsym (clean-symbol sym)]
          `(def ~sym ~doc
-            (dev.freeformsoftware.fulcro-subscriptions.subscription/defsubscription*
+            (dev.freeformsoftware.fulcro-subscriptions.subscription/defprovider*
               (fn ~sym ~argument-vector ~body) '~fqsym ~clean-inputs))))))
 
 #?(:cljs
    (>defn subscribe!
-     "Take some defsubscription (and optionally some context arguments) to generate a 
+     "Take some defprovider (and optionally some context arguments) to generate a 
       subscription using hooks. Make a new function to use something other than the default
-      hooks implementation. Supports the same args as `use-sub` inside the defsubscription"
-     ([reference]
-      [::subscription-map-ref => any?]
-      (subscribe! reference nil))
-     ([reference initial-args]
-      [::subscription-map-ref (? map?) => any?]
+      hooks implementation. Supports the same args as `use-sub` inside the defprovider"
+     ([appish reference]
+      [any? ::subscription-map-ref => any?]
+      (subscribe! appish reference nil))
+     ([appish reference initial-args]
+      [any? ::subscription-map-ref (? map?) => any?]
       (let [{::keys [invocation-strategy dependency-chain]} reference]
         (hooks/use-sub
           (fn []
@@ -420,4 +420,4 @@
               (if initial-args
                 (fn intermediate-merge* [args] (is (merge initial-args args)))
                 is)))
-          (assoc reference :lazy? true))))))
+          (assoc reference :lazy? true :appish appish))))))
