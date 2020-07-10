@@ -6,6 +6,10 @@ I use this daily for company software, and potentially for some other OSS work. 
 
 
 Future plans
+
+-- on hold for now, may have an alternate model for subscriptions in fulcro
+
+
  1. Incorporate a push model for subscriptions. Right now they depend on short-circuiting the invocation asap while running every subscription function. Will require some more external tooling to make it work 100% right. 
  2. Figure out how to make these more reloadable. Hooks in general are hard to add to a component. React counts the number of hooks per component and will have a fit if you change them at runtime. 
  3. Add middleware for renderers. First thing to be added there is middleware to limit how much work can be done per animation frame. Maybe change the return signature of use-sub so that meta (like :invalidated?) can be attached to the result.
