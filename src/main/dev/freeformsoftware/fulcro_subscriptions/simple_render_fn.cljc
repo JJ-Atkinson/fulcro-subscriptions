@@ -13,7 +13,6 @@
   ([fulcro-app] (invoke-all-subs! fulcro-app (reg/all-subs)))
   ([fulcro-app subscription-seq]
    (let [adb (app/current-state fulcro-app)]
-     (println "Calling all subs!" (count subscription-seq) (keys adb))
      (doseq [sub subscription-seq]
        (invoke-sub! adb sub)))))
 
@@ -25,5 +24,4 @@
   ([renderer {:keys []}]
    (fn [app options]
      (renderer app options)
-     (println "Calling all subs!" )
      (invoke-all-subs! app))))

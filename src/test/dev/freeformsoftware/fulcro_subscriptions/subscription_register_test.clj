@@ -11,6 +11,6 @@
       (is (= @count 1))))
   (testing "Register works"
     (register-sub-fn! 2)
-    (is (mc.su/in? (all-subs) 2))
+    (is (mc.su/in?
     (deregister-sub-fn! 2)
     (is (not (mc.su/in? (all-subs) 2)))))
